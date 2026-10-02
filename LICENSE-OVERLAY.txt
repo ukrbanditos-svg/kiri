@@ -1,0 +1,5 @@
+KiriVN overlay files: permission is granted to use, modify, and redistribute
+these KiriVN-specific overlay files with attribution.
+
+This does NOT relicense Kirikiroid2Yuri, KiriKiri, or bundled third-party components.
+Those retain their own upstream licenses and notices, which the build workflow preserves.
