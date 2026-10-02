@@ -150,7 +150,24 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
     p = upstream / "src/plugins/xp3filter.cpp"
     s = p.read_text(encoding="utf-8")
     if '#include "KiriVNCompat.h"' not in s:
-        s = replace_once(s, '#include "xp3filter.h"', '#include "xp3filter.h"\n#include "KiriVNCompat.h"', "KiriVN include")
+        s = replace_once(
+            s,
+            '#include "xp3filter.h"',
+            '#include "xp3filter.h"\\n#include "KiriVNCompat.h"\\n#include "KiriVNXP3Adaptive.h"',
+            "KiriVN include",
+        )
+
+    filter_hook_old = '''\tif (info->SizeOfSelf != sizeof(tTVPXP3ExtractionFilterInfo))
+        TVPThrowExceptionMessage(TJS_W("Incompatible tTVPXP3ExtractionFilterInfo size"));
+\tXP3FilterDecoder* decoder = FetchXP3Decoder();'''
+    filter_hook_new = '''\tif (info->SizeOfSelf != sizeof(tTVPXP3ExtractionFilterInfo))
+        TVPThrowExceptionMessage(TJS_W("Incompatible tTVPXP3ExtractionFilterInfo size"));
+    if (KiriVNShouldBypassXP3Filter(info))
+        return;
+\tXP3FilterDecoder* decoder = FetchXP3Decoder();'''
+    if filter_hook_old not in s:
+        raise RuntimeError("upstream changed: XP3 extraction wrapper hook not found")
+    s = s.replace(filter_hook_old, filter_hook_new, 1)
 
     pattern = re.compile(
         r'static void PostRegistCallback\(\)\s*\{.*?\n\}\n\nNCB_POST_REGIST_CALLBACK\(PostRegistCallback\);',
@@ -158,6 +175,7 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
     )
     replacement = r'''static void PostRegistCallback()
 {
+    KiriVNResetXP3AdaptiveMode();
     ttstr path = TVPGetAppPath() + TJS_W("xp3filter.tjs");
     if (TVPIsExistentStorageNoSearch(path)) {
         iTJSTextReadStream * stream = TVPCreateTextStreamForRead(path, "");
@@ -223,6 +241,34 @@ def patch_storage_app_path(upstream: pathlib.Path) -> None:
 def patch_text_stream(upstream: pathlib.Path) -> None:
     p = upstream / "src/core/base/TextStream.cpp"
     s = p.read_text(encoding="utf-8")
+
+    probe_old = '''\t\ttjs_uint8 mark[3] = {0,0};
+\t\t\tStream->Read(mark, 3);'''
+    probe_new = '''\t\ttjs_uint8 mark[3] = {0,0};
+            // KiriVN: read a larger first probe so the adaptive XP3 layer can
+            // reliably distinguish an original Cx-encrypted archive from an
+            // already-plain translated/repacked archive.
+            tjs_uint8 kirivn_probe[64] = {0};
+            tjs_uint64 kirivn_remaining =
+                Stream->GetSize() > ofs ? Stream->GetSize() - ofs : 0;
+            if(kirivn_remaining >= 3)
+            {
+                tjs_uint kirivn_probe_size =
+                    (tjs_uint)(kirivn_remaining > sizeof(kirivn_probe) ?
+                        sizeof(kirivn_probe) : kirivn_remaining);
+                Stream->Read(kirivn_probe, kirivn_probe_size);
+                mark[0] = kirivn_probe[0];
+                mark[1] = kirivn_probe[1];
+                mark[2] = kirivn_probe[2];
+                Stream->SetPosition(ofs + 3);
+            }
+            else
+            {
+                Stream->Read(mark, 3);
+            }'''
+    if probe_old not in s:
+        raise RuntimeError("upstream changed: TextStream initial 3-byte probe not found")
+    s = s.replace(probe_old, probe_new, 1)
 
     # KiriVN: decode each narrow text file independently. Russian translation
     # files are UTF-8 while original game files may still be Shift-JIS.
