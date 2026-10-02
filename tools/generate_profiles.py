@@ -24,7 +24,7 @@ def main() -> int:
     text = data.decode("utf-8")
     if not text.isascii():
         raise SystemExit("xp3filter unexpectedly contains non-ASCII data")
-    delim = "KIRIVN_RUITOMO_FVE_48060490"
+    delim = "KIRIVN48"
     if f"){delim}\"" in text:
         raise SystemExit("raw string delimiter collision")
     dst.parent.mkdir(parents=True, exist_ok=True)
