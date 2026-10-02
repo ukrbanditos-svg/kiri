@@ -157,14 +157,25 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
             "KiriVN include",
         )
 
-    filter_hook_pattern = re.compile(
-        r'(\s*if \(info->SizeOfSelf != sizeof\(tTVPXP3ExtractionFilterInfo\)\)\n'
-        r'\s*TVPThrowExceptionMessage\(TJS_W\("Incompatible tTVPXP3ExtractionFilterInfo size"\)\);\n)'
-        r'(\s*XP3FilterDecoder\* decoder = FetchXP3Decoder\(\);)'
+    content_hook_pattern = re.compile(
+        r'(tjs_int TVPXP3ArchiveContentFilterWrapper\\([^\\n]+\\) \\{\\n)'
     )
-    filter_hook_replacement = r'''\1    if (KiriVNShouldBypassXP3Filter(info))
+    s, n = content_hook_pattern.subn(
+        r'\\1    KiriVNPrepareXP3Context(archivename, ctx);\\n',
+        s,
+        count=1,
+    )
+    if n != 1:
+        raise RuntimeError("upstream changed: XP3 content wrapper hook not found")
+
+    filter_hook_pattern = re.compile(
+        r'(\\s*if \\(info->SizeOfSelf != sizeof\\(tTVPXP3ExtractionFilterInfo\\)\\)\\n'
+        r'\\s*TVPThrowExceptionMessage\\(TJS_W\\("Incompatible tTVPXP3ExtractionFilterInfo size"\\)\\);\\n)'
+        r'(\\s*XP3FilterDecoder\\* decoder = FetchXP3Decoder\\(\\);)'
+    )
+    filter_hook_replacement = r'''\\1    if (KiriVNShouldBypassXP3Filter(info, ctx))
         return;
-\2'''
+\\2'''
     s, n = filter_hook_pattern.subn(filter_hook_replacement, s, count=1)
     if n != 1:
         raise RuntimeError("upstream changed: XP3 extraction wrapper hook not found")
@@ -226,9 +237,20 @@ def patch_storage_app_path(upstream: pathlib.Path) -> None:
 \tstatic ttstr exepath(TVPExtractStoragePath(TVPNormalizeStorageName(ExePath())));
 \treturn exepath;
 #endif
-\t// KiriVN: the selected game changes at runtime. Do not cache the first
-\t// TVPProjectDir value, otherwise compatibility profiles and xp3filter.tjs
-\t// keep pointing at the launcher/previous directory.
+\t// KiriVN: the selected game changes at runtime, so do not cache the path.
+\t// If the project itself is an XP3, TVPSystemInit appends ">". Scripts
+\t// such as RuiTomo's System.Initialize expect System.exePath to be the
+\t// physical folder containing sibling bgimage.xp3/fgimage.xp3/etc.
+\tttstr project(TVPProjectDir);
+\ttjs_int len = project.GetLen();
+\tif(len > 0 && project.c_str()[len - 1] == TVPArchiveDelimiter)
+\t\tproject = project.SubString(0, len - 1);
+
+\tttstr lower = project.AsLowerCase();
+\tlen = lower.GetLen();
+\tif(len >= 4 && TJS_strcmp(lower.c_str() + len - 4, TJS_W(".xp3")) == 0)
+\t\treturn TVPExtractStoragePath(project);
+
 \treturn TVPExtractStoragePath(TVPProjectDir);
 }'''
     if old not in s:
