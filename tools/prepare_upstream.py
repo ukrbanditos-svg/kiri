@@ -265,20 +265,48 @@ def patch_text_stream(upstream: pathlib.Path) -> None:
                         if(size >= 8 && (size & 1) == 0)
                         {
                             size_t pairs = size / 2;
-                            if(pairs > 128) pairs = 128;
+                            if(pairs > 256) pairs = 256;
+                            size_t plausible = 0;
+                            size_t badControl = 0;
+                            size_t lineBreaks = 0;
                             size_t zeroHigh = 0;
-                            size_t textLike = 0;
+
                             for(size_t i = 0; i < pairs; ++i)
                             {
                                 tjs_uint16 wc = (tjs_uint16)nbuf[i * 2] |
                                     ((tjs_uint16)nbuf[i * 2 + 1] << 8);
+
                                 if(nbuf[i * 2 + 1] == 0) ++zeroHigh;
-                                if(wc == 9 || wc == 10 || wc == 13 || wc >= 0x20)
-                                    ++textLike;
+                                if(wc == 10 || wc == 13) ++lineBreaks;
+
+                                bool ok =
+                                    wc == 9 || wc == 10 || wc == 13 ||
+                                    (wc >= 0x20 && wc <= 0x7e) ||      // ASCII
+                                    (wc >= 0x00a0 && wc <= 0x024f) || // Latin
+                                    (wc >= 0x0400 && wc <= 0x052f) || // Cyrillic
+                                    (wc >= 0x2000 && wc <= 0x206f) || // punctuation
+                                    (wc >= 0x3000 && wc <= 0x30ff) || // JP punctuation/kana
+                                    (wc >= 0x3400 && wc <= 0x9fff) || // CJK
+                                    (wc >= 0xf900 && wc <= 0xfaff) || // CJK compat
+                                    (wc >= 0xff00 && wc <= 0xffef);   // full-width
+
+                                if(ok) ++plausible;
+
+                                if((wc < 0x20 && wc != 9 && wc != 10 && wc != 13) ||
+                                   (wc >= 0xd800 && wc <= 0xdfff) ||
+                                   wc == 0xfffe || wc == 0xffff)
+                                    ++badControl;
                             }
+
+                            // UTF-16LE scripts from translated KiriKiri games often
+                            // have no BOM and can be mostly Japanese/Cyrillic, so
+                            // checking only for zero high bytes is insufficient.
+                            // Require overwhelmingly text-like Unicode plus either
+                            // real UTF-16 line breaks or a classic ASCII/UTF-16 pattern.
                             looksUtf16LE =
-                                (zeroHigh * 3 >= pairs) &&
-                                (textLike * 10 >= pairs * 9);
+                                (plausible * 100 >= pairs * 88) &&
+                                (badControl * 100 <= pairs * 2) &&
+                                (lineBreaks > 0 || zeroHigh * 3 >= pairs);
                         }
 
                         if(looksUtf16LE)
