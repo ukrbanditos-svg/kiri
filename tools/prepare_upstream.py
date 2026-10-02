@@ -153,21 +153,21 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
         s = replace_once(
             s,
             '#include "xp3filter.h"',
-            '#include "xp3filter.h"\\n#include "KiriVNCompat.h"\\n#include "KiriVNXP3Adaptive.h"',
+            '#include "xp3filter.h"\n#include "KiriVNCompat.h"\n#include "KiriVNXP3Adaptive.h"',
             "KiriVN include",
         )
 
-    filter_hook_old = '''\tif (info->SizeOfSelf != sizeof(tTVPXP3ExtractionFilterInfo))
-        TVPThrowExceptionMessage(TJS_W("Incompatible tTVPXP3ExtractionFilterInfo size"));
-\tXP3FilterDecoder* decoder = FetchXP3Decoder();'''
-    filter_hook_new = '''\tif (info->SizeOfSelf != sizeof(tTVPXP3ExtractionFilterInfo))
-        TVPThrowExceptionMessage(TJS_W("Incompatible tTVPXP3ExtractionFilterInfo size"));
-    if (KiriVNShouldBypassXP3Filter(info))
+    filter_hook_pattern = re.compile(
+        r'(\s*if \(info->SizeOfSelf != sizeof\(tTVPXP3ExtractionFilterInfo\)\)\n'
+        r'\s*TVPThrowExceptionMessage\(TJS_W\("Incompatible tTVPXP3ExtractionFilterInfo size"\)\);\n)'
+        r'(\s*XP3FilterDecoder\* decoder = FetchXP3Decoder\(\);)'
+    )
+    filter_hook_replacement = r'''\1    if (KiriVNShouldBypassXP3Filter(info))
         return;
-\tXP3FilterDecoder* decoder = FetchXP3Decoder();'''
-    if filter_hook_old not in s:
+\2'''
+    s, n = filter_hook_pattern.subn(filter_hook_replacement, s, count=1)
+    if n != 1:
         raise RuntimeError("upstream changed: XP3 extraction wrapper hook not found")
-    s = s.replace(filter_hook_old, filter_hook_new, 1)
 
     pattern = re.compile(
         r'static void PostRegistCallback\(\)\s*\{.*?\n\}\n\nNCB_POST_REGIST_CALLBACK\(PostRegistCallback\);',
@@ -207,8 +207,6 @@ NCB_POST_REGIST_CALLBACK(PostRegistCallback);'''
     if n != 1:
         raise RuntimeError("upstream changed: PostRegistCallback not found")
     p.write_text(s2, encoding="utf-8", newline="\n")
-
-
 
 def patch_storage_app_path(upstream: pathlib.Path) -> None:
     p = upstream / "src/core/base/win32/StorageImpl.cpp"
