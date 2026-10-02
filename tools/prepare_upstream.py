@@ -268,7 +268,7 @@ def patch_text_stream(upstream: pathlib.Path) -> None:
                             BufferLen = TextStream_mbstowcs(NULL, (tjs_nchar*)nbuf, 0);
                             if (BufferLen == (size_t)-1) {
                                 ttstr msg(TVPGetMessageByLocale("err_narrow_to_wide"));
-                                msg += TJS_W("\nFile: ");
+                                msg += TJS_W(" File: ");
                                 msg += name;
                                 TVPThrowExceptionMessage(msg.c_str());
                             }
