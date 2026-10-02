@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "id": "ruitomo_fve",
+      "title": "Rui wa Tomo o Yobu - Full Voice Edition",
+      "vndb": "v776",
+      "engine": "KiriKiri2/KAG",
+      "compatibility": ["cxencryption-xp3filter"],
+      "explicit_marker": "kirivn_ruitomo_fve.profile",
+      "filter_git_blob_sha1": "48060490e83d1524a8b0eea0cf1ded45c80c2a74"
+    }
+  ]
+}
