@@ -25,12 +25,11 @@ jobs:
           ref: 6e61ce3b81416ceb2be3427a5f0471edefab7151
           path: upstream
 
-      - name: Set up Java 11
-        uses: actions/setup-java@v4
+      - name: Set up Java 17 for Android SDK tools
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: '11'
-          cache: gradle
+          java-version: '17'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
@@ -39,6 +38,13 @@ jobs:
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-33" "build-tools;33.0.2" "cmake;3.22.1" "ndk;25.2.9519653"
+
+      - name: Set up Java 11 for Yuri Gradle build
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '11'
+          cache: gradle
 
       - name: Install host tools
         run: sudo apt-get update && sudo apt-get install -y p7zip-full curl
