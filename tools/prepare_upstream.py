@@ -158,10 +158,10 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
         )
 
     content_hook_pattern = re.compile(
-        r'(tjs_int TVPXP3ArchiveContentFilterWrapper\\([^\\n]+\\) \\{\\n)'
+        r'(tjs_int TVPXP3ArchiveContentFilterWrapper\([^\n]+\) \{\n)'
     )
     s, n = content_hook_pattern.subn(
-        r'\\1    KiriVNPrepareXP3Context(archivename, ctx);\\n',
+        r'\1    KiriVNPrepareXP3Context(archivename, ctx);\n',
         s,
         count=1,
     )
@@ -169,13 +169,13 @@ def patch_xp3filter(upstream: pathlib.Path) -> None:
         raise RuntimeError("upstream changed: XP3 content wrapper hook not found")
 
     filter_hook_pattern = re.compile(
-        r'(\\s*if \\(info->SizeOfSelf != sizeof\\(tTVPXP3ExtractionFilterInfo\\)\\)\\n'
-        r'\\s*TVPThrowExceptionMessage\\(TJS_W\\("Incompatible tTVPXP3ExtractionFilterInfo size"\\)\\);\\n)'
-        r'(\\s*XP3FilterDecoder\\* decoder = FetchXP3Decoder\\(\\);)'
+        r'(\s*if \(info->SizeOfSelf != sizeof\(tTVPXP3ExtractionFilterInfo\)\)\n'
+        r'\s*TVPThrowExceptionMessage\(TJS_W\("Incompatible tTVPXP3ExtractionFilterInfo size"\)\);\n)'
+        r'(\s*XP3FilterDecoder\* decoder = FetchXP3Decoder\(\);)'
     )
-    filter_hook_replacement = r'''\\1    if (KiriVNShouldBypassXP3Filter(info, ctx))
+    filter_hook_replacement = r'''\1    if (KiriVNShouldBypassXP3Filter(info, ctx))
         return;
-\\2'''
+\2'''
     s, n = filter_hook_pattern.subn(filter_hook_replacement, s, count=1)
     if n != 1:
         raise RuntimeError("upstream changed: XP3 extraction wrapper hook not found")
