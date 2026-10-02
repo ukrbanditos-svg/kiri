@@ -25,13 +25,19 @@ static bool IsRuiTomoFVE(const ttstr &root) {
     if (Exists(root, TJS_W("kirivn_ruitomo_fve.profile"))) return true;
     if (Exists(root, TJS_W("ruitomo_fve.exe"))) return true;
 
+    // Common Android repacks/translation bundles keep the original encrypted
+    // data.xp3 but omit the Windows exe. The folder name is usually ruitomo*
+    // (for example ruitomo_ru_game), so use that as a guarded fallback.
+    ttstr lowerRoot(root);
+    lowerRoot.ToLowerCase();
+    const bool pathSaysRuiTomo =
+        lowerRoot.IndexOf(ttstr(TJS_W("ruitomo"))) >= 0 ||
+        lowerRoot.IndexOf(ttstr(TJS_W("るいは智を呼ぶ"))) >= 0;
+    if (pathSaysRuiTomo && Exists(root, TJS_W("data.xp3"))) return true;
+
     const bool hasStartup = Exists(root, TJS_W("startup.tjs"));
     const bool hasScenario = Exists(root, TJS_W("scenario/ruitomo09.ks")) ||
                              Exists(root, TJS_W("scenario/ruitomo10.ks"));
-    // The Russian translation can be distributed as an unpacked overlay
-    // without the original voice archive. startup.tjs + RuiTomo scenario names
-    // are specific enough for the built-in profile and the XP3 filter is
-    // harmless when no encrypted archive is present.
     return hasStartup && hasScenario;
 }
 
