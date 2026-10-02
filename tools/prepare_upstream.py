@@ -199,7 +199,7 @@ def make_russian_locale(upstream: pathlib.Path) -> None:
     for key, value in RU.items():
         pattern = re.compile(r'(<Item\\s+id="' + re.escape(key) + r'"\\s+text=")[^"]*(")')
         text, _ = pattern.subn(lambda m: m.group(1) + _xml_attr(value) + m.group(2), text, count=1)
-    dst.write_text(text, encoding="utf-8", newline="\\n")
+    dst.write_text(text, encoding="utf-8", newline="\n")
 
 def main() -> int:
     ap = argparse.ArgumentParser()
