@@ -190,6 +190,97 @@ NCB_POST_REGIST_CALLBACK(PostRegistCallback);'''
         raise RuntimeError("upstream changed: PostRegistCallback not found")
     p.write_text(s2, encoding="utf-8", newline="\n")
 
+
+def patch_text_stream(upstream: pathlib.Path) -> None:
+    p = upstream / "src/core/base/TextStream.cpp"
+    s = p.read_text(encoding="utf-8")
+
+    # KiriVN: decode each narrow text file independently. Russian translation
+    # files are UTF-8 while original game files may still be Shift-JIS.
+    decoder_pattern = re.compile(
+        r'extern size_t TextStream_mbstowcs\(tjs_char \*pwcs, const tjs_nchar \*s, size_t n\) \{.*?\n\}\n\n(?=static ttstr enc_utf8)',
+        re.S,
+    )
+    decoder_replacement = r'''extern size_t TextStream_mbstowcs(tjs_char *pwcs, const tjs_nchar *s, size_t n) {
+    if (mbtowc_for_text_stream) {
+        return _TextStream_mbstowcs(mbtowc_for_text_stream, pwcs, s, n);
+    }
+
+    // KiriVN: UTF-8 first (Russian translations), then legacy encodings.
+    // Do not make auto-detection sticky across files because many old VNs
+    // mix translated UTF-8 scripts with untouched Shift-JIS system scripts.
+    size_t ret = _TextStream_mbstowcs(utf8_mbtowc, pwcs, s, n);
+    if (ret != (size_t)-1) return ret;
+
+    ret = _TextStream_mbstowcs(sjis_mbtowc, pwcs, s, n);
+    if (ret != (size_t)-1) return ret;
+
+    return _TextStream_mbstowcs(gbk_mbtowc, pwcs, s, n);
+}
+
+'''
+    s, n = decoder_pattern.subn(decoder_replacement, s, count=1)
+    if n != 1:
+        raise RuntimeError("upstream changed: TextStream_mbstowcs block not found")
+
+    decode_pattern = re.compile(
+        r'BufferLen = TextStream_mbstowcs\(NULL, \(tjs_nchar\*\)nbuf, 0\);\n'
+        r'\s*if \(BufferLen == \(size_t\)-1\) \{\n'
+        r'\s*ttstr msg\(TVPGetMessageByLocale\("err_narrow_to_wide"\)\);\n'
+        r'\s*TVPThrowExceptionMessage\(msg\.c_str\(\)\);\n'
+        r'\s*\}\n'
+        r'\s*Buffer = new tjs_char \[ BufferLen \+1\];\n'
+        r'\s*TextStream_mbstowcs\(Buffer, \(tjs_nchar\*\)nbuf, BufferLen\);'
+    )
+    decode_replacement = r'''bool looksUtf16LE = false;
+                        if(size >= 8 && (size & 1) == 0)
+                        {
+                            size_t pairs = size / 2;
+                            if(pairs > 128) pairs = 128;
+                            size_t zeroHigh = 0;
+                            size_t textLike = 0;
+                            for(size_t i = 0; i < pairs; ++i)
+                            {
+                                tjs_uint16 wc = (tjs_uint16)nbuf[i * 2] |
+                                    ((tjs_uint16)nbuf[i * 2 + 1] << 8);
+                                if(nbuf[i * 2 + 1] == 0) ++zeroHigh;
+                                if(wc == 9 || wc == 10 || wc == 13 || wc >= 0x20)
+                                    ++textLike;
+                            }
+                            looksUtf16LE =
+                                (zeroHigh * 3 >= pairs) &&
+                                (textLike * 10 >= pairs * 9);
+                        }
+
+                        if(looksUtf16LE)
+                        {
+                            BufferLen = size / 2;
+                            Buffer = new tjs_char[BufferLen + 1];
+                            for(size_t i = 0; i < BufferLen; ++i)
+                            {
+                                Buffer[i] = (tjs_char)(
+                                    (tjs_uint16)nbuf[i * 2] |
+                                    ((tjs_uint16)nbuf[i * 2 + 1] << 8));
+                            }
+                        }
+                        else
+                        {
+                            BufferLen = TextStream_mbstowcs(NULL, (tjs_nchar*)nbuf, 0);
+                            if (BufferLen == (size_t)-1) {
+                                ttstr msg(TVPGetMessageByLocale("err_narrow_to_wide"));
+                                msg += TJS_W("\nFile: ");
+                                msg += name;
+                                TVPThrowExceptionMessage(msg.c_str());
+                            }
+                            Buffer = new tjs_char [ BufferLen +1];
+                            TextStream_mbstowcs(Buffer, (tjs_nchar*)nbuf, BufferLen);
+                        }'''
+    s, n = decode_pattern.subn(decode_replacement, s, count=1)
+    if n != 1:
+        raise RuntimeError("upstream changed: narrow decode block not found")
+
+    p.write_text(s, encoding="utf-8", newline="\n")
+
 def _xml_attr(value: str) -> str:
     return (value.replace("&", "&amp;")
                  .replace("<", "&lt;")
@@ -218,6 +309,7 @@ def main() -> int:
     patch_main_activity(upstream)
     patch_brand(upstream)
     patch_xp3filter(upstream)
+    patch_text_stream(upstream)
     make_russian_locale(upstream)
     print("KiriVN overlay applied to", upstream)
     return 0
