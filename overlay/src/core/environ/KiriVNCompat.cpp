@@ -2,6 +2,8 @@
 #include "StorageIntf.h"
 #include "KiriVNGeneratedProfiles.h"
 
+using namespace TJS;
+
 static ttstr JoinPath(const ttstr &root, const tjs_char *relative) {
     ttstr out(root);
     if (!out.IsEmpty()) {
