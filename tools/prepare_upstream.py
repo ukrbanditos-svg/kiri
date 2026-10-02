@@ -77,12 +77,15 @@ def copy_overlay(upstream: pathlib.Path) -> None:
 def patch_gradle_properties(upstream: pathlib.Path) -> None:
     p = upstream / "project/android/gradle.properties"
     text = p.read_text(encoding="utf-8")
-    text = re.sub(r'^PROP_COMPILE_SDK_VERSION=.*    p = upstream / "project/android/app/build.gradle"
+    text = re.sub(r"^PROP_COMPILE_SDK_VERSION=.*$", "PROP_COMPILE_SDK_VERSION=33", text, flags=re.M)
+    text = re.sub(r"^PROP_TARGET_SDK_VERSION=.*$", "PROP_TARGET_SDK_VERSION=33", text, flags=re.M)
+    p.write_text(text, encoding="utf-8", newline="\n")
+
+def patch_gradle(upstream: pathlib.Path) -> None:
+    p = upstream / "project/android/app/build.gradle"
     s = p.read_text(encoding="utf-8")
     s = replace_once(s, 'applicationId "com.yuri.kirikiri2"', 'applicationId "io.kirivn.player"', "applicationId")
     s = s.replace('versionName "1.4.0beta"', 'versionName "0.1.0-alpha"')
-    s = s.replace('outputFileName = "krkr2yuri_v${defaultConfig.versionName}.apk"',
-                  'outputFileName = "KiriVN_v${defaultConfig.versionName}.apk"')
     debug_re = re.compile(r'(debug\s*\{.*?)(\n\s*signingConfig signingConfigs\.release)(.*?\n\s*\})', re.S)
     s, n = debug_re.subn(r'\1\3', s, count=1)
     if n != 1:
