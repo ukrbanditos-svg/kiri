@@ -6,25 +6,34 @@
 using namespace TJS;
 
 namespace {
-enum class ArchiveMode {
+enum class DataArchiveMode {
     Unknown = 0,
     EncryptedCx,
     PlainRepack
 };
 
-static ArchiveMode gMode = ArchiveMode::Unknown;
+enum class StreamArchiveKind {
+    Unknown = 0,
+    DataXp3 = 1,
+    OtherXp3 = 2
+};
+
+static DataArchiveMode gDataMode = DataArchiveMode::Unknown;
+
+static bool EndsWith(const ttstr &value, const tjs_char *suffix) {
+    const tjs_int n = value.GetLen();
+    const tjs_int m = (tjs_int)TJS_strlen(suffix);
+    if (n < m) return false;
+    return TJS_strcmp(value.c_str() + n - m, suffix) == 0;
+}
 
 static bool IsTextFile(const ttstr &name) {
     ttstr lower = name.AsLowerCase();
-    const tjs_char *p = lower.c_str();
-    const tjs_int n = lower.GetLen();
-
     const tjs_char *suffixes[] = {
         TJS_W(".tjs"), TJS_W(".ks"), TJS_W(".txt"), TJS_W(".csv")
     };
     for (const tjs_char *suffix : suffixes) {
-        const tjs_int m = (tjs_int)TJS_strlen(suffix);
-        if (n >= m && TJS_strcmp(p + n - m, suffix) == 0) return true;
+        if (EndsWith(lower, suffix)) return true;
     }
     return false;
 }
@@ -104,35 +113,56 @@ static bool LooksLikePlainScript(const tTVPXP3ExtractionFilterInfo *info) {
     const tjs_uint n = info->BufferSize;
     return LooksLikePlainUtf16LE(b, n) || LooksLikePlainNarrowText(b, n);
 }
+
+static bool IsRuiTomoProfileActive() {
+    return ttstr(KiriVNDetectProfileId(TVPGetAppPath())) == TJS_W("ruitomo_fve");
+}
 }
 
 void KiriVNResetXP3AdaptiveMode() {
-    gMode = ArchiveMode::Unknown;
+    gDataMode = DataArchiveMode::Unknown;
 }
 
-bool KiriVNShouldBypassXP3Filter(const tTVPXP3ExtractionFilterInfo *info) {
-    if (!info) return false;
+void KiriVNPrepareXP3Context(const ttstr &archiveName, tTJSVariant *ctx) {
+    if (!ctx || !IsRuiTomoProfileActive()) return;
 
-    // Only use this compatibility heuristic for RuiTomo. Other games keep
-    // the normal Kirikiroid/Yuri extraction-filter behavior.
-    if (ttstr(KiriVNDetectProfileId(TVPGetAppPath())) != TJS_W("ruitomo_fve"))
-        return false;
+    ttstr lower = archiveName.AsLowerCase();
+    if (EndsWith(lower, TJS_W("data.xp3"))) {
+        *ctx = (tjs_int64)StreamArchiveKind::DataXp3;
+    } else {
+        // Translation layout: data.xp3 is repacked/plain, while the sibling
+        // archives (bgimage/fgimage/voice/etc.) are the original Cx archives.
+        *ctx = (tjs_int64)StreamArchiveKind::OtherXp3;
+    }
+}
 
-    if (gMode == ArchiveMode::PlainRepack) return true;
-    if (gMode == ArchiveMode::EncryptedCx) return false;
+bool KiriVNShouldBypassXP3Filter(const tTVPXP3ExtractionFilterInfo *info, tTJSVariant *ctx) {
+    if (!info || !IsRuiTomoProfileActive()) return false;
 
-    // Decide once from the beginning of the first text script we see.
-    if (info->Offset == 0 && IsTextFile(info->FileName) && info->BufferSize >= 12) {
-        if (LooksLikePlainScript(info)) {
-            gMode = ArchiveMode::PlainRepack;
-            return true;
+    StreamArchiveKind kind = StreamArchiveKind::Unknown;
+    if (ctx && ctx->Type() == tvtInteger) {
+        kind = (StreamArchiveKind)ctx->AsInteger();
+    }
+
+    // Original sibling archives must keep the RuiTomo Cx filter.
+    if (kind == StreamArchiveKind::OtherXp3) return false;
+
+    if (kind == StreamArchiveKind::DataXp3) {
+        if (gDataMode == DataArchiveMode::PlainRepack) return true;
+        if (gDataMode == DataArchiveMode::EncryptedCx) return false;
+
+        // Determine the translated data.xp3 once from a real text file.
+        if (info->Offset == 0 && IsTextFile(info->FileName) && info->BufferSize >= 12) {
+            if (LooksLikePlainScript(info)) {
+                gDataMode = DataArchiveMode::PlainRepack;
+                return true;
+            }
+            gDataMode = DataArchiveMode::EncryptedCx;
+            return false;
         }
 
-        gMode = ArchiveMode::EncryptedCx;
         return false;
     }
 
-    // Unknown: preserve original Cx behavior until a sufficiently large
-    // text probe is available.
     return false;
 }
