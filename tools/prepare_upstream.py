@@ -5,7 +5,6 @@ import argparse
 import pathlib
 import re
 import shutil
-import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 OVERLAY = ROOT / "overlay"
@@ -186,17 +185,21 @@ NCB_POST_REGIST_CALLBACK(PostRegistCallback);'''
         raise RuntimeError("upstream changed: PostRegistCallback not found")
     p.write_text(s2, encoding="utf-8", newline="\n")
 
+def _xml_attr(value: str) -> str:
+    return (value.replace("&", "&amp;")
+                 .replace("<", "&lt;")
+                 .replace(">", "&gt;")
+                 .replace('"', "&quot;")
+                 .replace("\n", "&#10;"))
+
 def make_russian_locale(upstream: pathlib.Path) -> None:
     src = upstream / "project/ui/Resources/res/locale/en_us.xml"
     dst = upstream / "project/ui/Resources/res/locale/ru_ru.xml"
-    tree = ET.parse(src)
-    root = tree.getroot()
-    for item in root.iter("Item"):
-        key = item.attrib.get("id")
-        if key in RU:
-            item.set("text", RU[key])
-    ET.indent(tree, space="    ")
-    tree.write(dst, encoding="utf-8", xml_declaration=True)
+    text = src.read_text(encoding="utf-8")
+    for key, value in RU.items():
+        pattern = re.compile(r'(<Item\\s+id="' + re.escape(key) + r'"\\s+text=")[^"]*(")')
+        text, _ = pattern.subn(lambda m: m.group(1) + _xml_attr(value) + m.group(2), text, count=1)
+    dst.write_text(text, encoding="utf-8", newline="\\n")
 
 def main() -> int:
     ap = argparse.ArgumentParser()
