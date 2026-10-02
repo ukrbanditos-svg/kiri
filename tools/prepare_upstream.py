@@ -191,6 +191,35 @@ NCB_POST_REGIST_CALLBACK(PostRegistCallback);'''
     p.write_text(s2, encoding="utf-8", newline="\n")
 
 
+
+def patch_storage_app_path(upstream: pathlib.Path) -> None:
+    p = upstream / "src/core/base/win32/StorageImpl.cpp"
+    s = p.read_text(encoding="utf-8")
+    old = '''ttstr TVPGetAppPath()
+{
+#if 0
+\tstatic ttstr exepath(TVPExtractStoragePath(TVPNormalizeStorageName(ExePath())));
+\treturn exepath;
+#endif
+\tstatic ttstr apppath(TVPExtractStoragePath(TVPProjectDir));
+\treturn apppath;
+}'''
+    new = '''ttstr TVPGetAppPath()
+{
+#if 0
+\tstatic ttstr exepath(TVPExtractStoragePath(TVPNormalizeStorageName(ExePath())));
+\treturn exepath;
+#endif
+\t// KiriVN: the selected game changes at runtime. Do not cache the first
+\t// TVPProjectDir value, otherwise compatibility profiles and xp3filter.tjs
+\t// keep pointing at the launcher/previous directory.
+\treturn TVPExtractStoragePath(TVPProjectDir);
+}'''
+    if old not in s:
+        raise RuntimeError("upstream changed: TVPGetAppPath block not found")
+    s = s.replace(old, new, 1)
+    p.write_text(s, encoding="utf-8", newline="\n")
+
 def patch_text_stream(upstream: pathlib.Path) -> None:
     p = upstream / "src/core/base/TextStream.cpp"
     s = p.read_text(encoding="utf-8")
@@ -309,6 +338,7 @@ def main() -> int:
     patch_main_activity(upstream)
     patch_brand(upstream)
     patch_xp3filter(upstream)
+    patch_storage_app_path(upstream)
     patch_text_stream(upstream)
     make_russian_locale(upstream)
     print("KiriVN overlay applied to", upstream)
