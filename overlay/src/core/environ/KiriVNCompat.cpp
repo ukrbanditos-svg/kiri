@@ -28,10 +28,11 @@ static bool IsRuiTomoFVE(const ttstr &root) {
     const bool hasStartup = Exists(root, TJS_W("startup.tjs"));
     const bool hasScenario = Exists(root, TJS_W("scenario/ruitomo09.ks")) ||
                              Exists(root, TJS_W("scenario/ruitomo10.ks"));
-    const bool hasVoice = Exists(root, TJS_W("voice.xp3")) ||
-                          Exists(root, TJS_W("Voice")) ||
-                          Exists(root, TJS_W("voice"));
-    return hasStartup && hasScenario && hasVoice;
+    // The Russian translation can be distributed as an unpacked overlay
+    // without the original voice archive. startup.tjs + RuiTomo scenario names
+    // are specific enough for the built-in profile and the XP3 filter is
+    // harmless when no encrypted archive is present.
+    return hasStartup && hasScenario;
 }
 
 const char *KiriVNDetectProfileId(const ttstr &appPath) {
